@@ -44,6 +44,7 @@ function buildPanel() {
         '',
         '**Games you can play inside:**',
         '`/tictactoe` `/rps` `/trivia` `/wordle` `/hangman` `/guessnumber` `/8ball` `/roll` `/coinflip` `/leaderboard`',
+        'Answer any game by pinging the bot, e.g. `@Bot e`, `@Bot 42`, `@Bot rock`.',
         '',
         'Each player can own **one** room at a time.',
       ].join('\n')
@@ -131,6 +132,7 @@ async function createRoom(interaction) {
           '• `/miniroom close` to close this room',
           '',
           'Try `/tictactoe @friend`, `/trivia`, `/wordle`, `/hangman` and more!',
+          'Answer games by pinging me: `@Bot e`, `@Bot 42`, `@Bot rock`.',
         ].join('\n')
       )
       .setColor(0x57f287);
