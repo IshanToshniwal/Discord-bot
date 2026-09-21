@@ -15,3 +15,5 @@ services:
         sync: false
       - key: DATA_CHANNEL_ID
         sync: false
+      - key: ANSWER_WITHOUT_PING
+        sync: false

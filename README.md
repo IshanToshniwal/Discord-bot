@@ -15,15 +15,31 @@ Private **minigame rooms** plus a set of **minigames with image-based boards and
 
 Members create rooms by clicking **Create Room** on the panel. Rooms are named `minigame-<username>`. One room per member.
 
+### Answering games by pinging the bot
+Every game accepts answers as a message that mentions the bot — no menus or popups needed:
+
+| Game | Example |
+|---|---|
+| Tic-tac-toe | `@Bot 5` (square 1–9) |
+| Rock-paper-scissors | `@Bot rock` / `paper` / `scissors` (message is deleted so the pick stays hidden) |
+| Trivia | `@Bot b` or the option text |
+| Wordle | `@Bot crane` |
+| Hangman | `@Bot e` for a letter, `@Bot rocket` for the whole word |
+| Guess the number | `@Bot 42` |
+
+The bot reacts to your message (✅ / ❌ / 🟩 …) and updates the board image. Buttons and menus still work too.
+Ping the bot with no text to see what's running. This works out of the box; to also accept answers
+**without** the ping, set `ANSWER_WITHOUT_PING=true` and enable **Message Content Intent** in the Developer Portal.
+
 ### Games (all render as images)
 | Command | Description |
 |---|---|
 | `/tictactoe @user` | Two-player tic-tac-toe with buttons; board drawn as an image. |
 | `/rps [@user]` | Rock-paper-scissors vs a friend (hidden picks) or vs the bot. |
 | `/trivia [category]` | Everyone in the channel answers with buttons in 20s; result card shows winners. |
-| `/wordle [guess]` | Daily 5-letter word, 6 guesses, private board; posts a spoiler-free result when done. |
+| `/wordle [daily]` | Shared 5-letter word for the room, 6 guesses, anyone can contribute. `daily:true` uses the server's word of the day. |
 | `/hangman` | Co-op hangman — pick letters from dropdowns. |
-| `/guessnumber [max]` | Guess the secret number via a popup; first to hit it wins. |
+| `/guessnumber [max]` | Guess the secret number; live range bar image narrows with each guess. |
 | `/8ball question` | Magic 8-ball. |
 | `/roll [NdS]` | Dice, e.g. `2d6`, `d20`. |
 | `/coinflip [call]` | Flip a coin; call it to count on the leaderboard. |
@@ -59,6 +75,7 @@ npm start
    - `DISCORD_TOKEN`, `CLIENT_ID` — required
    - `GUILD_ID` — optional; instant command registration in one server
    - `DATA_CHANNEL_ID` — optional but **recommended** (see below)
+   - `ANSWER_WITHOUT_PING` — optional, `true` to answer games without pinging (needs Message Content Intent)
 4. Deploy. The bot serves `/` and `/health` on Render's `PORT`.
 
 ### Keeping the leaderboard after redeploys (`DATA_CHANNEL_ID`)

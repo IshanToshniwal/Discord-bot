@@ -4,6 +4,7 @@ const path = require('path');
 const express = require('express');
 const { Client, GatewayIntentBits, Collection, MessageFlags } = require('discord.js');
 const store = require('./lib/store');
+const games = require('./lib/games');
 
 // ---------------------------------------------------------------------------
 // Keep-alive web server (Render + UptimeRobot)
@@ -19,7 +20,14 @@ app.listen(PORT, () => console.log(`Keep-alive server listening on port ${PORT}`
 // ---------------------------------------------------------------------------
 // Discord client + command loading
 // ---------------------------------------------------------------------------
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+// Answers by mention ("@Bot 42") work without the privileged Message Content intent,
+// because Discord always delivers the content of messages that mention the bot.
+// Set ANSWER_WITHOUT_PING=true (and enable Message Content Intent in the Developer
+// Portal) to also accept plain messages in a channel with a running game.
+const ANSWER_WITHOUT_PING = process.env.ANSWER_WITHOUT_PING === 'true';
+const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages];
+if (ANSWER_WITHOUT_PING) intents.push(GatewayIntentBits.MessageContent);
+const client = new Client({ intents });
 client.commands = new Collection();
 
 for (const dir of ['commands', 'games']) {
@@ -60,6 +68,8 @@ client.on('interactionCreate', async (interaction) => {
     else await interaction.reply(payload).catch(() => null);
   }
 });
+
+client.on('messageCreate', (message) => games.handleMessage(message, client, ANSWER_WITHOUT_PING));
 
 client.on('channelDelete', (channel) => {
   if (store.data.rooms[channel.id]) {
