@@ -13,3 +13,5 @@ services:
         sync: false
       - key: GUILD_ID
         sync: false
+      - key: DATA_CHANNEL_ID
+        sync: false

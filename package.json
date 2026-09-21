@@ -1,7 +1,7 @@
 {
   "name": "miniroom-bot",
-  "version": "1.0.0",
-  "description": "Discord bot that creates private minigame rooms via slash commands",
+  "version": "2.0.0",
+  "description": "Discord bot with private minigame rooms and image-based minigames",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -11,6 +11,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.56",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",
     "express": "^4.21.0"
