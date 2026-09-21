@@ -45,6 +45,11 @@ Ping the bot with no text to see what's running. This works out of the box; to a
 | `/coinflip [call]` | Flip a coin; call it to count on the leaderboard. |
 | `/leaderboard [game]` | Top 10 players by wins, as an image, with your own record. |
 
+### Utilities
+| Command | Description |
+|---|---|
+| `/gif effect [image] [user] [size] [speed]` | Turns an image (or a user's avatar, or your own if nothing given) into an animated GIF. Effects: spin, bounce, shake, zoom, wiggle, flip, fade, slide, rainbow, pulse, or *still* for a plain conversion. Works in any channel. |
+
 ## 1. Create the Discord application
 
 1. <https://discord.com/developers/applications> → **New Application**.
