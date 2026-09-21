@@ -2,20 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const store = require('../lib/store');
-const { gateGame } = require('../lib/util');
+const games = require('../lib/games');
+const { gateGame, pick } = require('../lib/util');
 const { renderWordle } = require('../lib/canvas');
 
-const WORDS = fs
-  .readFileSync(path.join(__dirname, '..', 'data', 'words.txt'), 'utf8')
-  .split(/\s+/)
-  .filter((w) => w.length === 5);
-
+const WORDS = fs.readFileSync(path.join(__dirname, '..', 'data', 'words.txt'), 'utf8').split(/\s+/).filter((w) => w.length === 5);
 const MAX_GUESSES = 6;
 
-// Everyone in a server gets the same word each day (IST-agnostic: uses UTC date).
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayKey = () => new Date().toISOString().slice(0, 10);
 function dailyWord(guildId) {
   const key = `${guildId}:${todayKey()}`;
   let h = 0;
@@ -41,85 +35,91 @@ function score(guess, answer) {
   return res;
 }
 
-function progress(guildId, userId) {
-  const day = todayKey();
-  store.data.wordle[guildId] ??= {};
-  // Drop old days to keep the file small.
-  for (const k of Object.keys(store.data.wordle[guildId])) if (k !== day) delete store.data.wordle[guildId][k];
-  store.data.wordle[guildId][day] ??= {};
-  store.data.wordle[guildId][day][userId] ??= { guesses: [], done: false, won: false };
-  return store.data.wordle[guildId][day][userId];
-}
+const emojiGrid = (guesses) => guesses.map((g) => g.result.map((r) => (r === 'g' ? '🟩' : r === 'y' ? '🟨' : '⬛')).join('')).join('\n');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('wordle')
-    .setDescription('Daily 5-letter word — 6 guesses, one word per day')
+    .setDescription('Shared Wordle for the room — 6 guesses, everyone can contribute')
     .setDMPermission(false)
-    .addStringOption((o) =>
-      o.setName('guess').setDescription('Your 5-letter guess (leave empty to see your board)').setMinLength(5).setMaxLength(5)
-    ),
+    .addStringOption((o) => o.setName('guess').setDescription('Guess a 5-letter word in the running game').setMinLength(5).setMaxLength(5))
+    .addBooleanOption((o) => o.setName('daily').setDescription("Start with today's server-wide word instead of a random one")),
 
   async execute(interaction) {
     if (!(await gateGame(interaction))) return;
-    const guildId = interaction.guildId;
-    const userId = interaction.user.id;
-    const answer = dailyWord(guildId);
-    const p = progress(guildId, userId);
-    const raw = interaction.options.getString('guess');
-    const title = `Wordle — ${todayKey()}`;
-    const name = interaction.member?.displayName || interaction.user.username;
+    const channelId = interaction.channelId;
+    const botName = interaction.client.user.username;
+    const guessOpt = interaction.options.getString('guess');
+    const running = games.get(channelId);
 
-    // Boards are ephemeral so players can't see each other's guesses.
-    if (!raw) {
-      return interaction.reply({
-        content: p.done
-          ? p.won
-            ? `🎉 You solved today's word in ${p.guesses.length}/${MAX_GUESSES}. Come back tomorrow!`
-            : `😢 You're out of guesses for today. The word was **${answer.toUpperCase()}**.`
-          : `You have **${MAX_GUESSES - p.guesses.length}** guesses left. Use \`/wordle guess:<word>\`.`,
-        files: [renderWordle(p.guesses, { title })],
-        flags: MessageFlags.Ephemeral,
-      });
+    // ---- guess into a running game via slash ----
+    if (guessOpt) {
+      if (!running || running.name !== 'Wordle') {
+        return interaction.reply({ content: '❌ No Wordle running here. Start one with `/wordle`.', flags: MessageFlags.Ephemeral });
+      }
+      const res = await running.onAnswer({ author: interaction.user, member: interaction.member }, guessOpt);
+      return interaction.reply({ content: res.ok ? `✅ Guessed **${guessOpt.toUpperCase()}**.` : `❌ ${res.reply}`, flags: MessageFlags.Ephemeral });
+    }
+    if (running?.name === 'Wordle') {
+      return interaction.reply({ content: `A Wordle is already running here — say \`@${botName} crane\` to guess.`, flags: MessageFlags.Ephemeral });
     }
 
-    const guess = raw.toLowerCase();
-    if (!/^[a-z]{5}$/.test(guess)) {
-      return interaction.reply({ content: '❌ Guess must be exactly 5 letters (A–Z).', flags: MessageFlags.Ephemeral });
-    }
-    if (p.done) {
-      return interaction.reply({
-        content: p.won ? '✅ You already solved today\'s word! Come back tomorrow.' : `❌ You're out of guesses for today. The word was **${answer.toUpperCase()}**.`,
-        files: [renderWordle(p.guesses, { title })],
-        flags: MessageFlags.Ephemeral,
-      });
-    }
+    const daily = interaction.options.getBoolean('daily') ?? false;
+    const answer = daily ? dailyWord(interaction.guildId) : pick(WORDS);
+    const title = daily ? `Daily Wordle — ${todayKey()}` : 'Wordle';
+    const guesses = [];
+    const participants = new Set();
+    let done = false;
 
-    p.guesses.push({ word: guess, result: score(guess, answer) });
-    const won = guess === answer;
-    if (won || p.guesses.length >= MAX_GUESSES) {
-      p.done = true;
-      p.won = won;
-      store.recordResult(guildId, userId, 'wordle', won ? 'win' : 'loss');
-    } else {
-      store.save();
-    }
+    const status = () => `🟩 **${title}** — ${MAX_GUESSES - guesses.length} guesses left. Guess with \`@${botName} crane\` or \`/wordle guess:crane\`.`;
+    await interaction.reply({ content: status(), files: [renderWordle(guesses, { title, subtitle: 'shared board — anyone can guess' })] });
+    const msg = await interaction.fetchReply();
 
-    let content;
-    if (won) content = `🎉 **Correct!** You solved it in ${p.guesses.length}/${MAX_GUESSES}.`;
-    else if (p.done) content = `😢 Out of guesses. The word was **${answer.toUpperCase()}**.`;
-    else content = `**${MAX_GUESSES - p.guesses.length}** guesses left.`;
+    const game = {
+      name: 'Wordle',
+      hint: `Say a 5-letter word, e.g. \`@${botName} crane\`.`,
+      async onAnswer(message, textIn) {
+        if (done) return { ok: false, reply: 'This Wordle is over.' };
+        const guess = textIn.trim().toLowerCase();
+        if (!/^[a-z]{5}$/.test(guess)) return { ok: false, reply: 'Guesses must be exactly 5 letters.' };
+        if (guesses.some((g) => g.word === guess)) return { ok: false, reply: 'Already guessed that word.' };
+        const name = message.member?.displayName || message.author.username;
+        guesses.push({ word: guess, result: score(guess, answer), by: name });
+        participants.add(message.author.id);
+        const won = guess === answer;
 
-    await interaction.reply({ content, files: [renderWordle(p.guesses, { title })], flags: MessageFlags.Ephemeral });
+        if (won || guesses.length >= MAX_GUESSES) {
+          done = true;
+          clearTimeout(timer);
+          games.unregister(channelId, game);
+          for (const uid of participants) store.recordResult(interaction.guildId, uid, 'wordle', won ? 'win' : 'loss');
+          await msg
+            .edit({
+              content: won
+                ? `🎉 **${name}** solved it in ${guesses.length}/${MAX_GUESSES}! The word was **${answer.toUpperCase()}**.\n${emojiGrid(guesses)}`
+                : `😢 Out of guesses. The word was **${answer.toUpperCase()}**.\n${emojiGrid(guesses)}`,
+              attachments: [],
+              files: [renderWordle(guesses, { title, subtitle: won ? `solved by ${name}` : `answer: ${answer.toUpperCase()}` })],
+            })
+            .catch(() => null);
+          return { ok: true, react: won ? '🎉' : '💀' };
+        }
+        await msg.edit({ content: status(), attachments: [], files: [renderWordle(guesses, { title, subtitle: `last guess by ${name}` })] }).catch(() => null);
+        const g = guesses[guesses.length - 1].result;
+        return { ok: true, react: g.includes('g') ? '🟩' : g.includes('y') ? '🟨' : '⬛' };
+      },
+      onReplaced: () => {
+        done = true;
+        clearTimeout(timer);
+      },
+    };
+    games.register(channelId, game);
 
-    // Share a spoiler-free result publicly when the game is over.
-    if (p.done) {
-      const grid = p.guesses
-        .map((g) => g.result.map((r) => (r === 'g' ? '🟩' : r === 'y' ? '🟨' : '⬛')).join(''))
-        .join('\n');
-      await interaction.channel
-        .send(`**${name}** — Wordle ${todayKey()} ${won ? p.guesses.length : 'X'}/${MAX_GUESSES}\n${grid}`)
-        .catch(() => null);
-    }
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      games.unregister(channelId, game);
+      msg.edit({ content: `⌛ Wordle timed out. The word was **${answer.toUpperCase()}**.` }).catch(() => null);
+    }, 15 * 60_000);
   },
 };

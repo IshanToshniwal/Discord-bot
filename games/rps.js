@@ -1,33 +1,21 @@
-const {
-  SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  MessageFlags,
-} = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const store = require('../lib/store');
+const games = require('../lib/games');
 const { gateGame, userInfo, pick } = require('../lib/util');
 const { renderRps } = require('../lib/canvas');
 
 const CHOICES = ['rock', 'paper', 'scissors'];
 const EMOJI = { rock: '🪨', paper: '📄', scissors: '✂️' };
 const BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
+const ALIASES = { r: 'rock', p: 'paper', s: 'scissors', rock: 'rock', paper: 'paper', scissors: 'scissors', scissor: 'scissors' };
 
-function judge(c1, c2) {
-  if (c1 === c2) return 'draw';
-  return BEATS[c1] === c2 ? 'p1' : 'p2';
-}
+const judge = (c1, c2) => (c1 === c2 ? 'draw' : BEATS[c1] === c2 ? 'p1' : 'p2');
 
 function rows(disabled = false) {
   return [
     new ActionRowBuilder().addComponents(
       CHOICES.map((c) =>
-        new ButtonBuilder()
-          .setCustomId(`rps_${c}`)
-          .setLabel(c[0].toUpperCase() + c.slice(1))
-          .setEmoji(EMOJI[c])
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(disabled)
+        new ButtonBuilder().setCustomId(`rps_${c}`).setLabel(c[0].toUpperCase() + c.slice(1)).setEmoji(EMOJI[c]).setStyle(ButtonStyle.Secondary).setDisabled(disabled)
       )
     ),
   ];
@@ -44,85 +32,89 @@ module.exports = {
     if (!(await gateGame(interaction))) return;
     const opponent = interaction.options.getUser('opponent');
     const p1 = userInfo(interaction.user, interaction.member);
+    const gid = interaction.guildId;
+    const botName = interaction.client.user.username;
+    const vsBot = !opponent || opponent.id === interaction.client.user.id;
+    const p2 = vsBot
+      ? userInfo(interaction.client.user, interaction.guild.members.me)
+      : userInfo(opponent, await interaction.guild.members.fetch(opponent.id).catch(() => null));
 
-    // ---- vs bot ----
-    if (!opponent || opponent.id === interaction.client.user.id) {
-      const bot = userInfo(interaction.client.user, interaction.guild.members.me);
-      await interaction.reply({ content: `${p1.name} vs **${bot.name}** — pick your move!`, components: rows() });
-      const msg = await interaction.fetchReply();
-      try {
-        const btn = await msg.awaitMessageComponent({
-          filter: (i) => i.user.id === p1.id,
-          time: 60_000,
-        });
-        const c1 = btn.customId.split('_')[1];
-        const c2 = pick(CHOICES);
-        const result = judge(c1, c2);
-        if (result === 'p1') store.recordResult(interaction.guildId, p1.id, 'rps', 'win');
-        else if (result === 'p2') store.recordResult(interaction.guildId, p1.id, 'rps', 'loss');
-        else store.recordResult(interaction.guildId, p1.id, 'rps', 'draw');
-        return btn.update({
-          content: '',
-          attachments: [], files: [await renderRps({ p1, p2: bot, c1, c2, result })],
-          components: [],
-        });
-      } catch {
-        return msg.edit({ content: '⌛ No move made in time.', components: rows(true) }).catch(() => null);
-      }
-    }
-
-    // ---- vs player ----
-    if (opponent.bot || opponent.id === p1.id) {
+    if (!vsBot && (opponent.bot || opponent.id === p1.id)) {
       return interaction.reply({ content: '❌ Pick a real opponent (not yourself or a bot).', flags: MessageFlags.Ephemeral });
     }
-    const oppMember = await interaction.guild.members.fetch(opponent.id).catch(() => null);
-    const p2 = userInfo(opponent, oppMember);
+
     const picks = {};
+    if (vsBot) picks[p2.id] = pick(CHOICES);
 
     await interaction.reply({
-      content: `🪨📄✂️ **${p1.name}** vs **${p2.name}**\nBoth players: pick your move (hidden until both have chosen).`,
+      content: vsBot
+        ? `🪨📄✂️ **${p1.name}** vs **${p2.name}** — pick your move (button, or \`@${botName} rock\`).`
+        : `🪨📄✂️ **${p1.name}** vs **${p2.name}**\nBoth players: pick a move — button, or \`@${botName} rock\` (your message gets deleted so it stays hidden).`,
       components: rows(),
     });
     const msg = await interaction.fetchReply();
-    const collector = msg.createMessageComponentCollector({ time: 60_000 });
+    const collector = msg.createMessageComponentCollector({ time: 90_000 });
+    let done = false;
+
+    async function finish() {
+      done = true;
+      collector.stop('done');
+      games.unregister(interaction.channelId, game);
+      const c1 = picks[p1.id];
+      const c2 = picks[p2.id];
+      const result = judge(c1, c2);
+      if (result === 'draw') {
+        store.recordResult(gid, p1.id, 'rps', 'draw');
+        if (!vsBot) store.recordResult(gid, p2.id, 'rps', 'draw');
+      } else {
+        store.recordResult(gid, result === 'p1' ? p1.id : p2.id, 'rps', 'win');
+        if (!vsBot || result === 'p2') store.recordResult(gid, result === 'p1' ? p2.id : p1.id, 'rps', 'loss');
+      }
+      await msg.edit({ content: '', attachments: [], files: [await renderRps({ p1, p2, c1, c2, result })], components: [] }).catch(() => null);
+    }
+
+    // Shared pick logic. Returns { ok, reply? }.
+    function choose(userId, choice) {
+      if (done) return { ok: false, reply: 'This game is over.' };
+      if (userId !== p1.id && userId !== p2.id) return { ok: false, reply: "You're not part of this game." };
+      if (picks[userId]) return { ok: false, reply: 'You already picked!' };
+      if (!CHOICES.includes(choice)) return { ok: false, reply: 'Say rock, paper or scissors.' };
+      picks[userId] = choice;
+      return { ok: true };
+    }
+
+    const game = {
+      name: 'Rock Paper Scissors',
+      hint: `Say \`@${botName} rock\`, \`paper\` or \`scissors\`.`,
+      async onAnswer(message, textIn) {
+        const res = choose(message.author.id, ALIASES[textIn.toLowerCase()]);
+        if (!res.ok) return res;
+        if (picks[p1.id] && picks[p2.id]) await finish();
+        return { ok: true, react: '🤫', delete: !vsBot };
+      },
+      onReplaced: () => collector.stop('replaced'),
+    };
+    games.register(interaction.channelId, game);
 
     collector.on('collect', async (btn) => {
-      if (btn.user.id !== p1.id && btn.user.id !== p2.id) {
-        return btn.reply({ content: "You're not part of this game.", flags: MessageFlags.Ephemeral });
-      }
-      if (picks[btn.user.id]) {
-        return btn.reply({ content: 'You already picked!', flags: MessageFlags.Ephemeral });
-      }
-      picks[btn.user.id] = btn.customId.split('_')[1];
-      await btn.reply({ content: `You chose **${picks[btn.user.id]}**. Waiting for the other player…`, flags: MessageFlags.Ephemeral });
-
+      const res = choose(btn.user.id, btn.customId.split('_')[1]);
+      if (!res.ok) return btn.reply({ content: res.reply, flags: MessageFlags.Ephemeral });
       if (picks[p1.id] && picks[p2.id]) {
-        collector.stop('done');
-        const c1 = picks[p1.id];
-        const c2 = picks[p2.id];
-        const result = judge(c1, c2);
-        const gid = interaction.guildId;
-        if (result === 'draw') {
-          store.recordResult(gid, p1.id, 'rps', 'draw');
-          store.recordResult(gid, p2.id, 'rps', 'draw');
-        } else {
-          store.recordResult(gid, result === 'p1' ? p1.id : p2.id, 'rps', 'win');
-          store.recordResult(gid, result === 'p1' ? p2.id : p1.id, 'rps', 'loss');
-        }
-        await msg.edit({
-          content: '',
-          attachments: [], files: [await renderRps({ p1, p2, c1, c2, result })],
-          components: [],
-        });
+        await btn.deferUpdate();
+        return finish();
       }
+      await btn.reply({ content: `You chose **${picks[btn.user.id]}**. Waiting for the other player…`, flags: MessageFlags.Ephemeral });
     });
 
     collector.on('end', async (_c, reason) => {
+      games.unregister(interaction.channelId, game);
       if (reason === 'done') return;
+      done = true;
       await msg
         .edit({
           content: '⌛ Time ran out before both players picked.',
-          attachments: [], files: [await renderRps({ p1, p2, c1: picks[p1.id], c2: picks[p2.id], result: 'draw' })],
+          attachments: [],
+          files: [await renderRps({ p1, p2, c1: picks[p1.id], c2: vsBot ? null : picks[p2.id], result: 'draw' })],
           components: [],
         })
         .catch(() => null);
