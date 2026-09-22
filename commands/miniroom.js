@@ -44,7 +44,8 @@ function buildPanel() {
         '',
         '**Games you can play inside:**',
         '`/tictactoe` `/rps` `/trivia` `/wordle` `/hangman` `/guessnumber` `/8ball` `/roll` `/coinflip` `/leaderboard`',
-        'Answer any game by pinging the bot, e.g. `@Bot e`, `@Bot 42`, `@Bot rock`.',
+        'Answer any game by pinging the bot, e.g. `@Bot e`, `@Bot 42`, `@Bot rock`. `/stop` ends your game.',
+        'Bonus: `/gif` turns any image or avatar into an animated GIF.',
         '',
         'Each player can own **one** room at a time.',
       ].join('\n')
