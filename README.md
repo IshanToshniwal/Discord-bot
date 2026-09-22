@@ -28,7 +28,7 @@ Every game accepts answers as a message that mentions the bot — no menus or po
 | Guess the number | `@Bot 42` |
 
 The bot reacts to your message (✅ / ❌ / 🟩 …) and updates the board image. Buttons and menus still work too.
-Ping the bot with no text to see what's running. This works out of the box; to also accept answers
+Ping the bot with no text to see what's running (if nothing is running the bot stays silent). This works out of the box; to also accept answers
 **without** the ping, set `ANSWER_WITHOUT_PING=true` and enable **Message Content Intent** in the Developer Portal.
 
 ### Games (all render as images)
@@ -44,6 +44,7 @@ Ping the bot with no text to see what's running. This works out of the box; to a
 | `/roll [NdS]` | Dice, e.g. `2d6`, `d20`. |
 | `/coinflip [call]` | Flip a coin; call it to count on the leaderboard. |
 | `/leaderboard [game]` | Top 10 players by wins, as an image, with your own record. |
+| `/stop` | Stops the game running in this channel. Only the person who started it (or an admin) can use it. |
 
 ### Utilities
 | Command | Description |
