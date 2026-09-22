@@ -62,6 +62,8 @@ module.exports = {
         const res = answer(message.author.id, message.member?.displayName || message.author.username, idx);
         return res.ok ? { ok: true, react: '🔒' } : res;
       },
+      hostId: interaction.user.id,
+      stop: () => collector.stop('stopped'),
       onReplaced: () => collector.stop('replaced'),
     };
     games.register(interaction.channelId, game);
@@ -74,9 +76,12 @@ module.exports = {
       await btn.reply({ content: `Locked in **${LETTERS[idx]}**.`, flags: MessageFlags.Ephemeral });
     });
 
-    collector.on('end', async () => {
+    collector.on('end', async (_c, reason) => {
       done = true;
       games.unregister(interaction.channelId, game);
+      if (reason === 'stopped') {
+        return msg.edit({ content: `🛑 Trivia stopped by the host. The answer was **${LETTERS[correctIndex]}. ${q.a}**.`, components: [] }).catch(() => null);
+      }
       const winners = [];
       for (const [uid, a] of answers) {
         const correct = a.index === correctIndex;

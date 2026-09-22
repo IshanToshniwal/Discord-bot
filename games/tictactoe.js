@@ -115,6 +115,8 @@ module.exports = {
         if (res.ok) await msg.edit(res.payload).catch(() => null);
         return res;
       },
+      hostId: interaction.user.id,
+      stop: () => collector.stop('stopped'),
       onReplaced: () => collector.stop('replaced'),
     };
     games.register(interaction.channelId, game);
@@ -129,7 +131,8 @@ module.exports = {
       games.unregister(interaction.channelId, game);
       if (reason !== 'done') {
         over = true;
-        msg.edit({ content: '⌛ Game timed out.', components: buildRows(board, true) }).catch(() => null);
+        const note = reason === 'stopped' ? '🛑 Game stopped by the host.' : '⌛ Game timed out.';
+        msg.edit({ content: `❌ ${players.X.name}  vs  ⭕ ${players.O.name}\n${note}`, components: buildRows(board, true) }).catch(() => null);
       }
     });
   },

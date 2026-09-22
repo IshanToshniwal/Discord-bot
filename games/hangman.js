@@ -108,6 +108,8 @@ module.exports = {
         if (res.ok) await msg.edit(res.payload).catch(() => null);
         return res;
       },
+      hostId: interaction.user.id,
+      stop: () => collector.stop('stopped'),
       onReplaced: () => collector.stop('replaced'),
     };
     games.register(interaction.channelId, game);
@@ -124,7 +126,8 @@ module.exports = {
       games.unregister(interaction.channelId, game);
       if (reason !== 'done') {
         done = true;
-        msg.edit({ content: `⌛ Game timed out. The word was **${word.toUpperCase()}**.`, components: [] }).catch(() => null);
+        const note = reason === 'stopped' ? '🛑 Game stopped by the host.' : '⌛ Game timed out.';
+        msg.edit({ content: `${note} The word was **${word.toUpperCase()}**.`, components: [] }).catch(() => null);
       }
     });
   },

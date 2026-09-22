@@ -108,6 +108,12 @@ module.exports = {
         const g = guesses[guesses.length - 1].result;
         return { ok: true, react: g.includes('g') ? '🟩' : g.includes('y') ? '🟨' : '⬛' };
       },
+      hostId: interaction.user.id,
+      stop: () => {
+        done = true;
+        clearTimeout(timer);
+        return msg.edit({ content: `🛑 Wordle stopped by the host. The word was **${answer.toUpperCase()}**.` }).catch(() => null);
+      },
       onReplaced: () => {
         done = true;
         clearTimeout(timer);

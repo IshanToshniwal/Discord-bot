@@ -92,6 +92,8 @@ module.exports = {
         if (picks[p1.id] && picks[p2.id]) await finish();
         return { ok: true, react: '🤫', delete: !vsBot };
       },
+      hostId: p1.id,
+      stop: () => collector.stop('stopped'),
       onReplaced: () => collector.stop('replaced'),
     };
     games.register(interaction.channelId, game);
@@ -110,6 +112,7 @@ module.exports = {
       games.unregister(interaction.channelId, game);
       if (reason === 'done') return;
       done = true;
+      if (reason === 'stopped') return msg.edit({ content: '🛑 Game stopped by the host.', components: [] }).catch(() => null);
       await msg
         .edit({
           content: '⌛ Time ran out before both players picked.',
